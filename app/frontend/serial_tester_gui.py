@@ -28,11 +28,10 @@ class SerialTesterGUI:
         self.root.grid_rowconfigure(0, weight=1)
 
         self.serial_port = None
-        self.parse_queue = queue.Queue()
-        self.stop_threads = False  # ✅ Initialize BEFORE starting threads
-        self.command_response_dict = {}  
-        self.button_widgets = {}  
-        self.status_labels = {}  
+        self.stop_threads = False  # Initialize BEFORE starting threads
+        self.command_response_dict = {}
+        self.button_widgets = {}
+        self.status_labels = {}
 
         self.create_serial_display()
         self.create_button_area()
@@ -42,10 +41,10 @@ class SerialTesterGUI:
         self.last_command = ""
         self.prompt = "root@OpenWrt:/#"
 
-
-
     def create_serial_display(self):
-        self.serial_display = scrolledtext.ScrolledText(self.root, wrap=tk.WORD, state=tk.DISABLED)
+        self.serial_display = scrolledtext.ScrolledText(
+            self.root, wrap=tk.WORD, state=tk.DISABLED
+        )
         self.serial_display.grid(row=0, column=1, sticky="nsew")
         self.serial_display.tag_config("error", foreground="red")
         self.serial_display.tag_config("success", foreground="green")  # tag for success
@@ -62,16 +61,24 @@ class SerialTesterGUI:
             column = button_info["column"]
             expected_response = button_info.get("expected_response", None)  # Get expected response
             if command == "Clear Display":
-                ttk.Button(button_frame, text=text, command=self.clear_display).grid(row=row, column=column, padx=5, pady=5, sticky="ew")
+                ttk.Button(
+                    button_frame, text=text, command=self.clear_display
+                ).grid(row=row, column=column, padx=5, pady=5, sticky="ew")
             else:
-                btn = ttk.Button(button_frame, text=text, command=lambda c=command, er=expected_response: self.send_command(c, er))  # Pass expected response
+                btn = ttk.Button(
+                    button_frame,
+                    text=text,
+                    command=lambda c=command, er=expected_response: self.send_command(c, er),
+                )  # Pass expected response
                 btn.grid(row=row, column=column, padx=5, pady=5, sticky="ew")
                 self.command_response_dict[command] = expected_response  # store
                 self.button_widgets[command] = btn  # Store the button widget
 
                 # Create status label and store it
                 status_label = ttk.Label(button_frame, text="Idle", foreground="orange")
-                status_label.grid(row=row, column=column + 1, padx=5, pady=5, sticky="ew")  # Place label next to button
+                status_label.grid(
+                    row=row, column=column + 1, padx=5, pady=5, sticky="ew"
+                )  # Place label next to button
                 self.status_labels[command] = status_label
 
         button_frame.grid_columnconfigure(0, weight=1)
@@ -93,9 +100,10 @@ class SerialTesterGUI:
             )
             self.display_message(f"Connected to serial port: {serial_port}")
             threading.Thread(target=self.read_serial_data, daemon=True).start()
-            threading.Thread(target=self.process_parsed_data, daemon=True).start()
         except serial.SerialException as e:
-            self.display_message(f"Error: Could not connect to serial port. {e}", "error")
+            self.display_message(
+                f"Error: Could not connect to serial port. {e}", "error"
+            )
 
     def display_message(self, message, tag=None):
         self.serial_display.config(state=tk.NORMAL)
@@ -121,34 +129,35 @@ class SerialTesterGUI:
     def clear_display(self):
         self.serial_display.config(state=tk.NORMAL)
         self.serial_display.delete("1.0", tk.END)
-        self.serial_display.config(state=tk.DISABLED)
+        self.serial_display.delete("1.0", tk.END)
 
     def read_serial_data(self):
-        last_was_prompt = False  
+        last_was_prompt = False
 
         while not self.stop_threads and self.serial_port and self.serial_port.is_open:
             try:
-                data = self.serial_port.readline().decode('utf-8', errors='ignore').strip()
+                data = (
+                    self.serial_port.readline().decode("utf-8", errors="ignore").strip()
+                )
 
                 if data:
-                    if data == self.last_command:  
+                    if data == self.last_command:
                         continue  # Ignore command echo
 
                     # Ignore displaying duplicated prompts
                     if data == self.prompt and last_was_prompt:
-                        continue  
+                        continue
 
                     self.display_message(data)
-                    self.response_buffer += data + "\n"  
+                    self.response_buffer += data + "\n"  # Append with newline for consistency
 
-                    if data == self.prompt:
+                    if data == self.prompt or data == self.prompt:
                         self.display_message("Prompt detected. Processing buffer.")
                         self.check_expected_response()
-                        self.response_buffer = ""  
-
-                        last_was_prompt = True  
+                        self.response_buffer = ""
+                        last_was_prompt = True
                     else:
-                        last_was_prompt = False  
+                        last_was_prompt = False
 
             except serial.SerialException as e:
                 self.display_message(f"Error reading from serial port: {e}", "error")
@@ -163,18 +172,18 @@ class SerialTesterGUI:
             self.serial_port.close()
             self.display_message("Serial port closed.", "error")
 
-
-
-
-
     def check_expected_response(self):
         """Checks the full buffer only once after the prompt is detected."""
         expected_response = self.command_response_dict.get(self.last_command)
 
         if expected_response:
-            self.display_message(f"Checking buffer: {self.response_buffer}")  # Debugging
+            self.display_message(
+                f"Checking buffer: {self.response_buffer}"
+            )  # Debugging message
             if expected_response in self.response_buffer:
-                self.display_message(f"Command: {self.last_command} - Passed", "success")
+                self.display_message(
+                    f"Command: {self.last_command} - Passed", "success"
+                )
                 self.update_status_label(self.last_command, "Pass", "green")
             else:
                 self.display_message(
@@ -182,66 +191,6 @@ class SerialTesterGUI:
                     "error",
                 )
                 self.update_status_label(self.last_command, "Fail", "red")
-
-
-
-
-    def process_parsed_data(self):
-        """
-        This function runs in a separate thread, processes the parsed data,
-        and compares it with the expected response.
-        """
-        while not self.stop_threads:
-            try:
-                command, data = self.parse_queue.get(timeout=10)
-                parsed_response = self.parse_response(command, data)
-                expected_response = self.command_response_dict.get(command)  # get expected
-
-                if expected_response:
-                    if expected_response in parsed_response:
-                        self.display_message(f"Command: {command} - Passed", "success")
-                        self.update_status_label(command, "Pass", "green")  # Update status
-                    else:
-                        self.display_message(f"Command: {command} - Failed. Expected: {expected_response}, Got: {parsed_response}", "error")
-                        self.update_status_label(command, "Fail", "red")  # Update status
-                else:
-                    self.display_message(f"Parsed: {parsed_response}")  # default
-
-            except queue.Empty:
-                pass
-            except Exception as e:
-                self.display_message(f"Error in process_parsed_data: {e}", "error")
-
-    def parse_response(self, command, response):
-        """
-        Parses the serial response based on the command sent.
-        """
-        if command == "lsusb":
-            devices = []
-            for line in response.splitlines():
-                if "ID" in line:
-                    parts = line.split("ID")
-                    if len(parts) > 1:
-                        device_info = parts[1].strip()
-                        devices.append(device_info)
-            return f"Devices: {devices}"
-        elif command == "Read Data\r\n":
-            if "OK" in response:
-                return "Data Read Successful"
-            else:
-                return "Data Read Failed"
-        elif command == "Command 1\r\n":
-            if "Success" in response:
-                return "Command 1 Passed"
-            else:
-                return "Command 1 Failed"
-        elif command == "Command 2\r\n":
-            if "Success" in response:
-                return "Command 2 Passed"
-            else:
-                return "Command 2 Failed"
-        else:
-            return f"Response for {command}: {response}"
 
     def update_status_label(self, command, text, color):
         """Helper function to update the status label."""
@@ -261,7 +210,9 @@ if __name__ == "__main__":
         if os.name == "posix":
             os.environ["DISPLAY"] = ":0"
         else:
-            print("DISPLAY environment variable not set. This might cause issues on some systems.")
+            print(
+                "DISPLAY environment variable not set. This might cause issues on some systems."
+            )
     root = tk.Tk()
     root.title("Serial Port Tester")  # Set the title here
     # Define a new style for success buttons.  Not used, but can be used if you want to change button appearence as well.
@@ -276,4 +227,3 @@ if __name__ == "__main__":
         print("Ctrl+C pressed. Cleaning up and exiting...")
         gui.on_closing()
         sys.exit(0)
-
